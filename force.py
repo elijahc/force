@@ -5,7 +5,7 @@ import numpy.matlib
 import scipy.sparse
 from tqdm import tqdm_notebook
 
-class NeuronBath:
+class NeuralNetwork:
 
     DT = 0.1
     def __init__(self,N=1000, pz=1, pg=0.1, g=1.5, alpha=1,dt=0.1):
@@ -21,12 +21,12 @@ class NeuronBath:
         self.M = sp.sparse.random(N,N,pg,data_rvs=M_rvs)*g
         self.M = self.M.toarray()
         self.P = (1.0/self.alpha)*np.identity(N)
-        self.wf = 1.0*(np.random.uniform(-1,1,N))
-        self.wo = stats.norm(loc=0,scale=(1.0/np.sqrt(N))).rvs(N)
-        #self.wo = np.zeros(N)
+        self.wf = np.expand_dims(np.random.uniform(-1,1,N),1)
+        #self.wo = stats.norm(loc=0,scale=(1.0/np.sqrt(N))).rvs(N)
+        self.wo = np.expand_dims(np.zeros(N),1)
         self.dw = np.zeros(N)
 
-        self.x = 0.5*np.random.randn(N)
+        self.x = np.expand_dims(0.5*np.random.randn(N),1)
         self.r = np.tanh(self.x)
         self.z = 0.5*np.random.randn()
 
@@ -40,13 +40,13 @@ class NeuronBath:
         self.z = np.dot(self.wo.T,self.r)
 
     def learn(self):
-        self.k = np.dot(self.P,self.r).astype(np.float128)
+        self.k = np.dot(self.P,self.r)
         self.rPr = np.dot(self.r.T,self.k)
-        self.c = 1.0 / (0.9999 + self.rPr)
+        self.c = (1.0 / (1.0 + self.rPr))
         self.P = self.P - np.dot(self.k,(self.k.T*self.c))
 
     def update_wo(self,error):
-        self.dw = self.k*self.c*error
+        self.dw = -error*self.k*self.c
         self.wo = self.wo + self.dw
 
 class Simulation:
@@ -73,22 +73,17 @@ class Simulation:
         self.gen_ft(self.amp,self.freq,to)
         self.zt = []
         self.wot = []
-        self.rt = np.empty((self.network.N,len(self.timeline)))
-        self.xt = np.empty((self.network.N,len(self.timeline)))
         for idx,t in tqdm_notebook(enumerate(self.timeline),desc=msg,total=len(self.timeline)):
             self.network.step(feedback=fb)
-            if idx % learn_every == 0:
-                if train:
-                    # Update weights
-                    e = self.ft[idx] - self.network.z
-                    self.network.learn()
-                    self.network.update_wo(e)
+            if idx % learn_every == 1 and train:
+                # Update weights
+                self.network.learn()
+                e = self.network.z - self.ft[idx]
+                self.network.update_wo(e)
             self.zt.extend([self.network.z])
             self.wot.append(np.sqrt(np.matmul(self.network.wo.T,self.network.wo)))
-            self.rt[:,idx] = self.network.r
-            self.xt[:,idx] = self.network.x
-        self.zt = np.array(self.zt).astype(np.float64)
-        self.wot = np.array(self.wot).astype(np.float64)
+        self.zt = np.squeeze(np.array(self.zt)).astype(np.float64)
+        self.wot = np.array(self.wot)
 
 if __name__=='__main__':
     N = 1000
