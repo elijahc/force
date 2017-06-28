@@ -6,36 +6,36 @@ import scipy.sparse
 from tqdm import tqdm_notebook
 
 class NeuralNetwork:
-
     DT = 0.1
-    def __init__(self,N=1000, pz=1, pg=0.1, g=1.5, alpha=1,dt=0.1):
+    def __init__(self,N=1000, pz=1, pg=0.1, g=1.5, alpha=1,dt=0.1,num_fits=1):
         self.N = N
         self.pg = pg
         self.pz = pz
         self.g = g
         self.alpha = alpha
         self.DT = dt
+        self.num_fits = num_fits
 
         scale = 1.0/np.sqrt(self.pg*self.N)
         M_rvs = stats.norm(loc=0,scale=scale).rvs
         self.M = sp.sparse.random(N,N,pg,data_rvs=M_rvs)*g
         self.M = self.M.toarray()
         self.P = (1.0/self.alpha)*np.identity(N)
-        self.wf = np.expand_dims(np.random.uniform(-1,1,N),1)
-        #self.wo = stats.norm(loc=0,scale=(1.0/np.sqrt(N))).rvs(N)
-        self.wo = np.expand_dims(np.zeros(N),1)
-        self.dw = np.zeros(N)
+        self.wf = np.random.uniform(-1,1,(N,num_fits))
+        #self.wo = np.expand_dims(stats.norm(loc=0,scale=(1.0/np.sqrt(N))).rvs(N),num_fits)
+        self.wo = np.zeros((N,num_fits))
+        self.dw = np.zeros((N,num_fits))
 
         self.x = np.expand_dims(0.5*np.random.randn(N),1)
         self.r = np.tanh(self.x)
-        self.z = 0.5*np.random.randn()
+        self.z = np.expand_dims(0.5*np.random.randn(num_fits),1)
 
     def step(self, dt=None,feedback=True):
         if dt is None:
             dt = self.DT
         self.x = (1.0-dt)*self.x + np.matmul(self.M,(self.r*dt))
         if feedback:
-            self.x = self.x + self.wf*(self.z*dt)
+            self.x = self.x + np.matmul(self.wf,(self.z*dt))
         self.r = np.tanh(self.x)
         self.z = np.dot(self.wo.T,self.r)
 
@@ -53,6 +53,7 @@ class Simulation:
     def __init__(self,network,dt=0.1,nsecs=1440):
         self.network = network
         self.dt = dt
+        self.ft = None
         self.nsecs = nsecs
         self.timeline = np.arange(self.nsecs/dt) * dt
         self.amp = 1.3
@@ -61,29 +62,36 @@ class Simulation:
     def gen_timeline(self,to=0):
         self.timeline = np.arange(self.nsecs/self.dt)*self.dt + to
 
-    def gen_ft(self,amp=1.3,freq=1/60,to=0):
+    def gen_ft(self,num=1,amp=1.3,freq=1/60,to=0):
         self.amp = amp
         self.freq = freq
         self.gen_timeline(to)
-        sin_wave = (self.amp/1.0)*np.sin(1.0*np.pi*self.freq*self.timeline) + (self.amp/2.0)*np.sin(2.0*np.pi*self.freq*self.timeline) + (self.amp/6.0)*np.sin(3.0*np.pi*self.freq*self.timeline) + (self.amp/3.0)*np.sin(4.0*np.pi*self.freq*self.timeline)
+        sin_wave = np.empty((len(self.timeline),num))
+        for i in np.arange(num):
+            sin_wave[:,i] = (self.amp/1.0)*np.sin(1.0*np.pi*self.freq*self.timeline) + (self.amp/2.0)*np.sin(2.0*np.pi*self.freq*self.timeline) + (self.amp/6.0)*np.sin(3.0*np.pi*self.freq*self.timeline) + (self.amp/3.0)*np.sin(4.0*np.pi*self.freq*self.timeline)
+
         self.ft = sin_wave/1.5
         return self.ft
 
-    def run(self,msg,learn_every=2,train=True,fb=True,to=0):
-        self.gen_ft(self.amp,self.freq,to)
+    def run(self,msg,learn_every=2,train=True,fb=True,t_begin=0,t_end=None):
+        if self.ft is None:
+            self.gen_ft(self.network.num_fits,self.amp,self.freq,t_begin)
+        if t_end is None:
+            t_end = len(self.timeline)
         self.zt = []
-        self.wot = []
-        for idx,t in tqdm_notebook(enumerate(self.timeline),desc=msg,total=len(self.timeline)):
+        #self.wot = []
+        idxs = np.arange(t_begin,t_end)
+        for idx in tqdm_notebook(idxs,desc=msg,total=len(idxs)):
             self.network.step(feedback=fb)
             if idx % learn_every == 1 and train:
                 # Update weights
                 self.network.learn()
-                e = self.network.z - self.ft[idx]
+                e = self.network.z.T - self.ft[idx]
                 self.network.update_wo(e)
-            self.zt.extend([self.network.z])
-            self.wot.append(np.sqrt(np.matmul(self.network.wo.T,self.network.wo)))
-        self.zt = np.squeeze(np.array(self.zt)).astype(np.float64)
-        self.wot = np.array(self.wot)
+            self.zt.append(self.network.z)
+            #self.wot.append(np.sqrt(np.matmul(self.network.wo.T,self.network.wo)))
+        self.zt = np.squeeze(np.array(self.zt))
+        #self.wot = np.array(self.wot)
 
 if __name__=='__main__':
     N = 1000
