@@ -114,6 +114,11 @@ class Simulation:
         self.zt = np.squeeze(np.array(self.zt))
         #self.wot = np.array(self.wot)
 
+    def train(self,msg='training network'):
+        self.run(msg)
+
+
+
 if __name__=='__main__':
     N = 1000
     nsecs = 1440
