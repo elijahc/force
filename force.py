@@ -3,32 +3,44 @@ import scipy as sp
 import scipy.stats as stats
 import numpy.matlib
 import scipy.sparse
+import json
 from tqdm import tqdm_notebook
 
 class NeuralNetwork:
     DT = 0.1
-    def __init__(self,N=1000, pz=1, pg=0.1, g=1.5, alpha=1,dt=0.1,num_fits=1):
-        self.N = N
-        self.pg = pg
-        self.pz = pz
-        self.g = g
-        self.alpha = alpha
-        self.DT = dt
-        self.num_fits = num_fits
+    def from_dict(self, state_dict):
+        for k,v in state_dict.iteritems():
+            if isinstance(v,list):
+                v = np.array(v)
+            setattr(self,k,v)
 
-        scale = 1.0/np.sqrt(self.pg*self.N)
-        M_rvs = stats.norm(loc=0,scale=scale).rvs
-        self.M = sp.sparse.random(N,N,pg,data_rvs=M_rvs)*g
-        self.M = self.M.toarray()
-        self.P = (1.0/self.alpha)*np.identity(N)
-        self.wf = np.random.uniform(-1,1,(N,num_fits))
-        #self.wo = np.expand_dims(stats.norm(loc=0,scale=(1.0/np.sqrt(N))).rvs(N),num_fits)
-        self.wo = np.zeros((N,num_fits))
-        self.dw = np.zeros((N,num_fits))
+    def __init__(self,N=1000, pz=1, pg=0.1, g=1.5, alpha=1,dt=0.1,num_fits=1,state=None):
+        if state is not None:
+            self.from_dict(state)
+        else:
+            self.N = N
+            self.pg = pg
+            self.pz = pz
+            self.g = g
+            self.alpha = alpha
+            self.DT = dt
+            self.num_fits = num_fits
 
-        self.x = np.expand_dims(0.5*np.random.randn(N),1)
-        self.r = np.tanh(self.x)
-        self.z = np.expand_dims(0.5*np.random.randn(num_fits),1)
+            scale = 1.0/np.sqrt(self.pg*self.N)
+            M_rvs = stats.norm(loc=0,scale=scale).rvs
+            self.M = sp.sparse.random(N,N,pg,data_rvs=M_rvs)*g
+            self.M = self.M.toarray()
+            self.P = (1.0/self.alpha)*np.identity(N)
+            self.wf = np.random.uniform(-1,1,(N,num_fits))
+            #self.wo = np.expand_dims(stats.norm(loc=0,scale=(1.0/np.sqrt(N))).rvs(N),num_fits)
+            self.wo = np.zeros((N,num_fits))
+            self.dw = np.zeros((N,num_fits))
+
+            self.x = np.expand_dims(0.5*np.random.randn(N),1)
+            self.r = np.tanh(self.x)
+            self.z = np.expand_dims(0.5*np.random.randn(num_fits),1)
+
+
 
     def step(self, dt=None,feedback=True):
         if dt is None:
@@ -48,6 +60,15 @@ class NeuralNetwork:
     def update_wo(self,error):
         self.dw = -error*self.k*self.c
         self.wo = self.wo + self.dw
+
+    def to_json(self):
+        out = {}
+        for k,v in vars(self).iteritems():
+            if isinstance(v,np.ndarray):
+                out[k]=v.tolist()
+            else:
+                out[k]=v
+        return json.dumps(out,sort_keys=True, indent=4)
 
 class Simulation:
     def __init__(self,network,dt=0.1,nsecs=1440):
