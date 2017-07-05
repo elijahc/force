@@ -99,8 +99,6 @@ class Simulation:
         self.dt = dt
         self.ft = ft
         self.idx = 0
-        self.amp = 1.3
-        self.freq = 1.0/60
         self.pretrained = False
 
     def iter(self,steps,ft,init_steps=2,learn_every=2,train=True,ctl=False):
