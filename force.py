@@ -123,15 +123,15 @@ class Simulation:
             yield self.idx
             self.idx += 1
 
-    def gen_ft(self,amp=1.3,freq=1.0/60,to=0):
-        self.timeline = np.arange(self.steps) * self.dt
+    def gen_ft(self,steps=10000,amp=1.3,freq=1.0/60,to=0):
+        self.timeline = np.arange(steps) * self.dt
         self.amp = amp
         self.freq = freq
         sin_wave = np.empty((len(self.timeline),self.network.num_fits))
         for i in np.arange(self.network.num_fits):
             sin_wave[:,i] = (self.amp/1.0)*np.sin(1.0*np.pi*self.freq*self.timeline) + (self.amp/2.0)*np.sin(2.0*np.pi*self.freq*self.timeline) + (self.amp/6.0)*np.sin(3.0*np.pi*self.freq*self.timeline) + (self.amp/3.0)*np.sin(4.0*np.pi*self.freq*self.timeline)
 
-        self.ft = sin_wave/1.5
+        self.ft = sin_wave.swapaxes(0,1)/1.5
         return self.ft
 
     def run(self,msg,learn_every=2,train=True,init=True,t_begin=0,t_end=None):
