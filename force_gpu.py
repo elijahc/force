@@ -35,7 +35,7 @@ class NeuralNetwork:
             self.P = (1.0/self.alpha)*np.identity(N)
             self.wf = cm.CUDAMatrix(np.random.uniform(-1,1,(N,num_fits)))
             #self.wo = np.expand_dims(stats.norm(loc=0,scale=(1.0/np.sqrt(N))).rvs(N),num_fits)
-            self.wo = np.zeros((N,num_fits))
+            self.wo = cm.CUDAMatrix(np.zeros((N,num_fits)))
             self.dw = np.zeros((N,num_fits))
             self.woc = np.zeros((N,1))
             self.wfc = np.random.uniform(-1,1,(N,1))
@@ -51,26 +51,25 @@ class NeuralNetwork:
     def step(self, dt=None,ctl=False):
         if dt is None:
             dt = self.DT
-        xdt = self.x.mult(1.0-dt)
-        rdt = self.r.mult(dt)
-        self.zdt = cm.CUDAMatrix(self.z*dt)
-        self.x = xdt.add(cm.dot(self.M,rdt)).add(cm.dot(self.wf,self.zdt).asarray()
-        if ctl:
-            self.x = self.x + cm.dot(self.wfc,(self.z_ctl*dt))
-        self.r = np.tanh(self.x)
-        self.z = np.dot(self.wo.T,self.r)
-        self.z_ctl = cm.dot(self.woc.T,self.r)
+        self.xdt = self.x.mult(1.0-dt)
+        self.rdt = self.r.mult(dt)
+        self.zdt = self.z.mult(dt)
+        self.x = self.xdt.add(cm.dot(self.M,self.rdt)).add(cm.dot(self.wf,self.zdt))
+        # if ctl:
+           # self.x = self.x + cm.dot(self.wfc,(self.z_ctl*dt))
+        self.r = cm.tanh(self.x)
+        self.z = cm.dot(self.wo.T,self.r)
+        # self.z_ctl = cm.dot(self.woc.T,self.r)
 
     def learn(self):
-        self.k = cm.dot(self.P,self.r)
-        self.rPr = cm.dot(self.r.T,self.k)
-        self.c = float(np.squeeze(cm.pow(self.rPr.add(1.0),-1).asarray()))
-        self.kc = self.k.mult(self.c)
-        self.dP = cm.dot(self.k,self.kc.transpose())
-        self.P = self.P.subtract(self.dP)
+        self.k = np.matmul(self.P,self.r.asarray())
+        self.rPr = np.dot(self.r.asarray().T,self.k)
+        self.c = 1/(1.0+self.rPr)
+        self.dP = np.dot(self.k,self.k.T)*self.c
+        self.P = self.P - self.dP
 
     def update_wo(self,error):
-        self.dw = cm.CUDAMatrix(-error*self.k.asarray()*self.c)
+        self.dw = cm.CUDAMatrix(-error*self.k*self.c)
         self.wo = self.wo.add(self.dw)
 
     def update_woc(self):
@@ -96,7 +95,8 @@ class Simulation:
             self.network.step(ctl=True)
             if pretrain_idx % 2 == 1:
                 self.network.learn()
-                e = self.network.z.T - self.ft[:,0]
+                e = self.network.z.asarray().T - self.ft[:,0]
+                print(e)
                 self.network.update_wo(e)
                 self.network.update_woc()
             pretrain_idx += 1
@@ -124,9 +124,8 @@ class Simulation:
             self.network.step(ctl=ctl)
             if self.idx % learn_every == 1 and train:
                 self.network.learn()
-                zt = self.network.z.transpose()
-                ft = cm.CUDAMatrix(np.expand_dims(self.ft[:,self.idx],1))
-                e = zt.add(ft.mult(-1.0)).asarray()
+                e = self.network.z.asarray().T - self.ft[:,self.idx]
+                # ft = cm.CUDAMatrix(np.expand_dims(self.ft[:,self.idx],1))
                 self.network.update_wo(e)
                 if ctl:
                     self.network.update_woc()

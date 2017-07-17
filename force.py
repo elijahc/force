@@ -116,7 +116,7 @@ class Simulation:
             self.network.step(ctl=ctl)
             if self.idx % learn_every == 1 and train:
                 self.network.learn()
-                e = self.network.z.T - self.ft[:,self.idx]
+                e = (self.network.z.T - self.ft[:,self.idx])/self.network.num_fits
                 self.network.update_wo(e)
                 if ctl:
                     self.network.update_woc()
